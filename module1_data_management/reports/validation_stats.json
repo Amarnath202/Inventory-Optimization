@@ -1,0 +1,26 @@
+{
+  "stats": {
+    "supplier_rows": 200,
+    "supplier_unique": 200,
+    "product_rows": 3046,
+    "product_unique": 3046,
+    "category_count": 23,
+    "brand_count": 473,
+    "purchase_frequency": {
+      "Monthly": 2459,
+      "Weekly": 495,
+      "Daily": 92
+    },
+    "inventory_rows": 60702,
+    "inventory_batch_unique": 60702,
+    "inventory_date_min": "2025-01-01",
+    "inventory_date_max": "2026-08-01",
+    "sales_rows": 4290604,
+    "sales_sale_id_unique": 4290604,
+    "sales_date_min": "2025-01-01",
+    "sales_date_max": "2026-08-30",
+    "bill_header_inconsistencies": 0,
+    "sold_qty_mismatches": 0
+  },
+  "issues": []
+}

@@ -1,0 +1,3 @@
+model,n,mae,rmse,wape,smape
+LightGBM,134778,1.2197,2.1523,0.4133,0.9057
+MA7_Baseline,134778,1.3335,2.2046,0.4519,1.0784
