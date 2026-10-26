@@ -24,6 +24,11 @@ _M2_ROOT = _PROJ_ROOT / "module2_demand_forecasting"
 if _M2_ROOT.exists():
     sys.path.insert(0, str(_M2_ROOT))
 from backend.routes.forecasts import router as forecast_router
+from backend.routes.inventory_optimization import router as inv_opt_router
+from backend.routes.orchestration import router as orchestration_router
+from backend.routes.excess_stock import router as excess_stock_router
+from backend.routes.procurement import router as procurement_router  # Module 4
+from backend.routes.explainability import router as explainability_router  # Module 6
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +57,11 @@ app.add_middleware(
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(forecast_router)
+app.include_router(inv_opt_router)
+app.include_router(orchestration_router)
+app.include_router(excess_stock_router)   # Module 5 — Excess Stock Management
+app.include_router(procurement_router)    # Module 4 — Procurement Agent
+app.include_router(explainability_router)  # Module 6 — Explainability
 
 
 @app.get("/")
