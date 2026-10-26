@@ -48,8 +48,17 @@ dmypy.json
 
 # ─── Secrets / Environment ────────────────────────────────────────────────────
 .env
-# keep the example templates
+.env.*
 !.env.example
+!**/.env.example
+
+# ─── Local databases / data exports ──────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.db3
+*.dump
+*.sql.gz
 
 # ─── Datasets (large binary / generated) ────────────────────────────────────
 Dataset/
@@ -62,6 +71,13 @@ module2_demand_forecasting/models/*.joblib
 module2_demand_forecasting/models/cv_models/
 module2_demand_forecasting/models/latest_model_version.txt
 module2_demand_forecasting/models/model_metadata.json
+*.joblib
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.h5
+*.hdf5
 
 # ─── Generated Reports / Audit / Research files ──────────────────────────────
 # Research audit artefacts (prediction CSVs, intermediate metrics, etc.)
