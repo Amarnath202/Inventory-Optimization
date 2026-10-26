@@ -46,6 +46,12 @@ RANKING_METHOD = "lead_time_based"
 POLICY_VERSION = "v1.0"
 
 
+def _has_valid_lead_time(supplier: dict) -> bool:
+    """Only positive integer supplier lead times are eligible for ranking."""
+    lead_time = supplier.get("lead_time_days")
+    return isinstance(lead_time, int) and not isinstance(lead_time, bool) and lead_time > 0
+
+
 def _get_eligible_suppliers(conn, product_id: str) -> list[dict]:
     """
     Retrieve all suppliers linked to product_id via product_supplier,
@@ -243,8 +249,22 @@ def run_procurement_agent(conn, state: dict) -> dict:
         product_name = _get_product_name(conn, product_id)
 
         # ── Retrieve eligible suppliers ────────────────────────────────────────
-        suppliers = _get_eligible_suppliers(conn, product_id)
+        supplier_rows = _get_eligible_suppliers(conn, product_id)
+        suppliers = [supplier for supplier in supplier_rows if _has_valid_lead_time(supplier)]
+        invalid_lead_time_count = len(supplier_rows) - len(suppliers)
+        suppliers.sort(key=lambda supplier: (
+            supplier["lead_time_days"],
+            supplier["supplier_id"],
+        ))
         eligible_count = len(suppliers)
+
+        if invalid_lead_time_count:
+            invalid_notice = (
+                f"PROCUREMENT: Excluded {invalid_lead_time_count} supplier "
+                f"alternative(s) for {product_id} because lead_time_days was "
+                "missing or invalid; no value was inferred."
+            )
+            data_notices.append(invalid_notice)
 
         logger.info(
             f"[ProcurementAgent] product={product_id} "
@@ -271,12 +291,17 @@ def run_procurement_agent(conn, state: dict) -> dict:
                 "tie_supplier_count": None,
                 "tie_explanation": None,
                 "requires_manager_approval": True,
-                "data_warnings": "No eligible supplier found for this product.",
+                "data_warnings": (
+                    "No supplier with a valid lead time found for this product."
+                ),
                 "recommendation_notes": (
-                    "No supplier found for this product in product_supplier table. "
+                    "No supplier with a valid lead time found for this product. "
                     "Manual procurement required."
                 ),
-                "warning": "No eligible supplier. Manual procurement required.",
+                "warning": (
+                    "No eligible supplier with a valid lead time. "
+                    "Manual procurement required."
+                ),
             }
             return {"procurement_result": result, "data_notices": data_notices}
 
@@ -333,6 +358,11 @@ def run_procurement_agent(conn, state: dict) -> dict:
         if eligible_count == 1:
             data_warnings_parts.append(
                 "Only 1 eligible supplier found. A second recommendation is not available."
+            )
+        if invalid_lead_time_count:
+            data_warnings_parts.append(
+                f"{invalid_lead_time_count} supplier alternative(s) were excluded "
+                "because lead_time_days was missing or invalid."
             )
         data_warnings_parts.append(
             "Lead-time data is sourced from the supplier master (modelled synthetic values). "
@@ -395,7 +425,7 @@ def run_procurement_agent(conn, state: dict) -> dict:
             "rank2_supplier_id": r2["supplier_id"] if r2 else None,
             "rank2_supplier_name": r2["supplier_name"] if r2 else None,
             "rank2_lead_time_days": r2["lead_time_days"] if r2 else None,
-            # topsis_score removed — not applicable to lead_time_based ranking
+            # Retained for compatibility; lead-time ranking does not calculate a score.
             "topsis_score": None,
         }
 

@@ -14,6 +14,7 @@ Exit codes
 
 import sys
 import csv
+import json
 from pathlib import Path
 
 import psycopg2
@@ -21,7 +22,7 @@ import psycopg2.errors
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.settings import (
-    DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, PROC_DIR,
+    DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, PROC_DIR, RAW_DIR,
 )
 
 # ── Result tracking ───────────────────────────────────────────────────────────
@@ -384,16 +385,16 @@ def test_10_constraint_enforcement(conn, cur):
 
 def test_11_rerun_idempotence(cur):
     """
-    Verify DB row counts do not exceed CSV source row counts.
-    A DB count greater than CSV count would indicate phantom duplicates
-    from a rerun (which should not happen with ON CONFLICT DO NOTHING).
+    Check loaded rows against their complete import sources.
+
+    Module 4 adds supplier alternatives after Module 1's base import, and the
+    sale table is derived as one header per distinct Bill_No from sales lines.
+    Neither table can be checked against its Module 1 processed CSV row count.
     """
     csv_map = {
         "supplier":        "supplier.csv",
         "product":         "product.csv",
-        "product_supplier": "product_supplier.csv",
         "inventory_batch": "inventory_batch.csv",
-        "sale":            "sale.csv",
         "sale_item":       "sale_item.csv",
     }
     failures = []
@@ -401,23 +402,72 @@ def test_11_rerun_idempotence(cur):
     for table, filename in csv_map.items():
         csv_path = PROC_DIR / filename
         if not csv_path.exists():
-            continue   # can't check if CSV not generated yet
+            failures.append(f"{table}: expected Module 1 source is missing: {csv_path}")
+            continue
 
         with open(csv_path, "r", encoding="utf-8") as f:
             csv_count = sum(1 for _ in f) - 1   # subtract header
 
         db_count = scalar(cur, f"SELECT COUNT(*) FROM {table}")
 
-        if db_count > csv_count:
+        if db_count != csv_count:
             failures.append(
-                f"{table}: DB={db_count:,} > CSV={csv_count:,} "
-                "(unexpected extra rows — possible rerun duplication)"
+                f"{table}: DB={db_count:,} != Module 1 source={csv_count:,}"
             )
+
+    base_path = PROC_DIR / "product_supplier.csv"
+    alternatives_path = RAW_DIR / "module4_all_supplier_lead_time_ranking.csv"
+    if not base_path.exists() or not alternatives_path.exists():
+        failures.append(
+            "product_supplier: Module 1 base CSV or Module 4 alternatives CSV is missing"
+        )
+    else:
+        with open(base_path, "r", encoding="utf-8", newline="") as f:
+            base_pairs = {
+                (row["Product_ID"], row["Supplier_ID"])
+                for row in csv.DictReader(f)
+            }
+        with open(alternatives_path, "r", encoding="utf-8", newline="") as f:
+            alternative_pairs = {
+                (row["Product_ID"], row["Supplier_ID"])
+                for row in csv.DictReader(f)
+            }
+        cur.execute("SELECT product_id, supplier_id FROM product_supplier")
+        database_pairs = set(cur.fetchall())
+        expected_pairs = base_pairs | alternative_pairs
+        if database_pairs != expected_pairs:
+            failures.append(
+                "product_supplier: database pairs do not equal the Module 1 base "
+                f"plus Module 4 alternatives (DB={len(database_pairs):,}, "
+                f"expected={len(expected_pairs):,})"
+            )
+        if not base_pairs.issubset(database_pairs):
+            failures.append("product_supplier: one or more Module 1 base pairs are missing")
+        if not alternative_pairs.issubset(database_pairs):
+            failures.append("product_supplier: one or more Module 4 alternatives are missing")
+
+    validation_path = RAW_DIR / "threshold_dataset_validation.json"
+    if not validation_path.exists():
+        failures.append(f"sale: validated raw source metadata is missing: {validation_path}")
+    else:
+        with open(validation_path, "r", encoding="utf-8") as f:
+            source_counts = json.load(f)
+        expected_bills = source_counts.get("bills_total")
+        if not isinstance(expected_bills, int):
+            failures.append("sale: raw source metadata has no integer bills_total")
+        else:
+            db_count = scalar(cur, "SELECT COUNT(*) FROM sale")
+            if db_count != expected_bills:
+                failures.append(
+                    f"sale: DB={db_count:,} != distinct raw Bill_No count="
+                    f"{expected_bills:,}"
+                )
 
     if failures:
         raise ValueError("; ".join(failures))
     record(11, "Rerun idempotence", PASS,
-           "DB row counts ≤ CSV row counts in all tables")
+           "Module 1 source rows match; product_supplier includes base + alternatives; "
+           "sale matches validated distinct Bill_No count")
 
 
 def test_12_source_db_consistency(cur):

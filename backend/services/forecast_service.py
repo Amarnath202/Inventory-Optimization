@@ -10,6 +10,8 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from backend.services.inventory_service import get_latest_batch_stock
+
 
 def get_latest_run_id(conn) -> Optional[str]:
     cur = conn.cursor()
@@ -109,14 +111,9 @@ def get_product_forecast(conn, product_id: str, run_id: str = None) -> dict:
     else:
         history = []
 
-    # Current stock
-    cur.execute(
-        "SELECT SUM(current_quantity) AS stock FROM inventory_batch WHERE product_id = %s",
-        (product_id,)
-    )
-    stock_row = cur.fetchone()
-    current_stock = int(stock_row["stock"] or 0)
     cur.close()
+    stock = get_latest_batch_stock(conn, product_id)
+    current_stock = int(stock["available_stock"]) if stock else 0
 
     return {
         "product": dict(prod),

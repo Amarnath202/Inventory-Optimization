@@ -94,7 +94,7 @@ class ProcurementResult(TypedDict, total=False):
     rank2_supplier_id         : str|None
     rank2_supplier_name       : str|None
     rank2_lead_time_days      : int|None
-    topsis_score              : None (not applicable to lead_time_based ranking)
+    topsis_score              : None (legacy compatibility field; not used by ranking)
     recommendation_id         : int|None (DB persistence row id, if persisted)
     """
     agent: str
@@ -120,7 +120,7 @@ class ProcurementResult(TypedDict, total=False):
     rank2_supplier_id: Optional[str]
     rank2_supplier_name: Optional[str]
     rank2_lead_time_days: Optional[int]
-    topsis_score: Optional[float]
+    topsis_score: None
     recommendation_id: Optional[int]
 
 

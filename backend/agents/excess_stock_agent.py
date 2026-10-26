@@ -81,23 +81,11 @@ def run_excess_stock_agent(conn, state: dict) -> dict:
             abc_population=None,  # population computed inside the service
         )
 
-        # Attempt to persist the assessment
-        assessment_id_m5 = None
-        try:
-            assessment_id_m5 = upsert_excess_assessment(conn, result_row)
-            logger.info(
-                f"[ExcessStockAgent] Persisted assessment_id={assessment_id_m5} "
-                f"for product={product_id}"
-            )
-        except Exception as persist_err:
-            logger.warning(
-                f"[ExcessStockAgent] Could not persist assessment: {persist_err}. "
-                "Returning result without persistence."
-            )
-            data_notices.append(
-                f"M5_PERSISTENCE_WARNING: Assessment result could not be saved to DB "
-                f"({persist_err}). Result is valid but not persisted."
-            )
+        assessment_id_m5 = upsert_excess_assessment(conn, result_row)
+        logger.info(
+            f"[ExcessStockAgent] Persisted assessment_id={assessment_id_m5} "
+            f"for product={product_id}"
+        )
 
         # Append standing data notice
         data_notices.append(

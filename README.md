@@ -169,10 +169,14 @@ Create a local database using your PostgreSQL administration tool, or (if Postgr
 createdb -U postgres inventory_optimization_db2
 ```
 
-Create the root `.env` from the checked-in template and edit it locally:
+Create the root `.env` from the checked-in root template and edit it locally:
 
 ```powershell
-Copy-Item module1_data_management\.env.example .env
+if (-not (Test-Path .env)) {
+    Copy-Item .env.example .env
+} else {
+    Write-Host "Existing .env preserved; edit it directly."
+}
 notepad .env
 ```
 
@@ -357,7 +361,7 @@ The most recent recorded run in [`backend/HANDOVER.md`](backend/HANDOVER.md) and
 
 ## Security and data safety
 
-- Keep local credentials in the root `.env`; `.env` and `.env.*` are ignored, while `.env.example` templates remain trackable. Never commit passwords, tokens, or connection strings.
+- Keep local credentials in the root `.env`; `.env` and `.env.*` are ignored, while the root `.env.example` template remains trackable. Never commit passwords, tokens, or connection strings.
 - The `Dataset\` directory and generated forecasting model artifacts are ignored. Obtain data and model artifacts through authorized project channels; do not commit private or sensitive data.
 - Use a disposable test database for setup, schema creation, forecast generation, supplier imports, assessments, and orchestration. These operations can write database records.
 - The application does not implement automatic purchasing or inventory quantity updates. Do not interpret recommendations as orders or execute manager actions without an authorized review.

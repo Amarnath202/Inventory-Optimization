@@ -50,71 +50,23 @@ module2_demand_forecasting/
 
 ## Quick Start
 
-### 1. Prerequisites
-- PostgreSQL 18.4 with `inventory_optimization_db2` database (Module 1 must be complete)
-- Python 3.11+
-- Node.js v24+ / npm v11+
+The repository-root [`README.md`](../README.md) is the authoritative setup guide
+for prerequisites, the single root `.venv`, root `requirements.txt`, shared root
+`.env`, database setup, and application startup. Run these Module 2 commands
+from the repository root after completing Module 1 and configuring PostgreSQL:
 
-### 2. Create virtual environment
 ```powershell
-cd module2_demand_forecasting
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+.\.venv\Scripts\python.exe module2_demand_forecasting\src\pipeline.py --create-schema
+.\.venv\Scripts\python.exe module2_demand_forecasting\src\pipeline.py --train
+.\.venv\Scripts\python.exe module2_demand_forecasting\src\pipeline.py --forecast
 ```
 
-### 3. Environment variables
-The root `.env` file (shared with Module 1) is used. Ensure it contains:
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=inventory_optimization_db2
-DB_USER=postgres
-DB_PASSWORD=your_password
-```
+Training is a manual operation; it is not scheduled. Start the optional weekly
+scheduler in a separate terminal with:
 
-### 4. Create database schema (one-time)
 ```powershell
-.venv\Scripts\python src\pipeline.py --create-schema
+.\.venv\Scripts\python.exe module2_demand_forecasting\src\scheduler.py
 ```
-Creates `demand_forecast` and `forecast_run` tables. Safe to re-run.
-
-### 5. Train the model (manual — do not schedule training)
-```powershell
-.venv\Scripts\python src\train.py
-```
-This runs the full pipeline: load → gap-fill → features → train → evaluate → save model.
-Outputs:
-- `models/lgbm_<model_version>.joblib` — trained model
-- `models/product_encoder.joblib` — label encoder
-- `models/model_metadata.json` — training config and verified row counts
-- `reports/forecasting_metrics_val.csv` / `reports/forecasting_metrics_test.csv`
-- `reports/forecasting_report.md`
-
-### 6. Generate forecasts
-```powershell
-.venv\Scripts\python src\pipeline.py --forecast
-```
-Or trigger from the dashboard: `POST /api/forecast/trigger`
-
-### 7. Start the API
-```powershell
-.venv\Scripts\python -m uvicorn backend.main:app --reload --port 8000
-```
-API docs: http://localhost:8000/docs
-
-### 8. Start the dashboard
-```powershell
-cd frontend
-npm run dev
-```
-Dashboard: http://localhost:5173
-
-### 9. Start the weekly scheduler (separate process)
-```powershell
-.venv\Scripts\python src\scheduler.py
-```
-Runs every Sunday at 02:00 IST (configurable via `.env`).
 
 ---
 

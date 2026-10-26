@@ -83,6 +83,10 @@ XYZ_WINDOW_DAYS = 90                       # demand-variability window
 
 POLICY_VERSION = "v1.0"
 
+class AssessmentLinkageError(ValueError):
+    """Raised when an excess-stock assessment cannot be linked safely."""
+
+
 # ── Recommendation map: (abc_class, xyz_class) → action ──────────────────────
 RECOMMENDATION_MAP: dict = {
     ("A", "X"): "monitor_and_review_replenishment",
@@ -513,31 +517,25 @@ def assess_excess_stock_product(
     data_warnings = []
 
     # ── Stock inputs ──────────────────────────────────────────────────────────
-    if assessment:
-        inventory_position = assessment.get("inventory_position")
-        maximum_stock_level = assessment.get("maximum_stock_level")
-        inventory_assessment_id = assessment.get("assessment_id")
-        forecast_run_id = assessment.get("forecast_run_id")
-        available_stock = assessment.get("available_stock")
-        nonzero_demand_days_from_assess = assessment.get("nonzero_demand_days")
+    if assessment is None:
+        assessment = get_latest_linked_inventory_assessment(conn, product_id)
     else:
-        # Fetch stock independently
-        from backend.services.inventory_service import (
-            get_latest_batch_stock, get_product_with_supplier
-        )
-        stock = get_latest_batch_stock(conn, product_id)
-        product = get_product_with_supplier(conn, product_id)
-        if stock is None:
-            inventory_position = None
-            available_stock = None
-            data_warnings.append("no_stock_data: no inventory_batch rows found")
-        else:
-            inventory_position = stock["inventory_position"]
-            available_stock = stock["available_stock"]
-        maximum_stock_level = product.get("maximum_stock_level") if product else None
-        inventory_assessment_id = None
-        forecast_run_id = None
-        nonzero_demand_days_from_assess = None
+        assessment_product = assessment.get("product_id")
+        if assessment_product != product_id:
+            raise AssessmentLinkageError(
+                f"Inventory assessment product '{assessment_product}' does not "
+                f"match requested product '{product_id}'."
+            )
+        if assessment.get("assessment_id") is None:
+            raise AssessmentLinkageError(
+                f"Inventory assessment for product '{product_id}' has no persisted assessment_id."
+            )
+
+    inventory_position = assessment.get("inventory_position")
+    maximum_stock_level = assessment.get("maximum_stock_level")
+    inventory_assessment_id = assessment.get("assessment_id")
+    forecast_run_id = assessment.get("forecast_run_id")
+    available_stock = assessment.get("available_stock")
 
     data_warnings.append(
         "STOCK: Available stock is a static 2026-08-01 snapshot (latest_batch). "
@@ -647,6 +645,99 @@ def assess_excess_stock_product(
     }
 
 
+def get_latest_linked_inventory_assessment(
+    conn,
+    product_id: str,
+    assessment_id: Optional[int] = None,
+) -> dict:
+    """
+    Resolve and validate a persisted Module 3 assessment and its forecast run.
+
+    The latest assessment is selected by assessed_at, with assessment_id as a
+    deterministic tie-breaker. If an ID is supplied, that exact product/
+    assessment pair is validated instead.
+    """
+    cur = conn.cursor()
+    try:
+        where = "WHERE ia.product_id = %s"
+        params: tuple = (product_id,)
+        if assessment_id is not None:
+            where += " AND ia.assessment_id = %s"
+            params = (product_id, assessment_id)
+
+        order = (
+            "ORDER BY ia.assessed_at DESC, ia.assessment_id DESC LIMIT 1"
+            if assessment_id is None
+            else ""
+        )
+        cur.execute(
+            f"""
+            SELECT ia.*,
+                   fr.model_version AS linked_model_version,
+                   fr.status AS linked_forecast_status,
+                   EXISTS (
+                       SELECT 1
+                       FROM demand_forecast df
+                       WHERE df.forecast_run_id = ia.forecast_run_id
+                         AND df.product_id = ia.product_id
+                   ) AS has_product_forecast,
+                   EXISTS (
+                       SELECT 1
+                       FROM demand_forecast df
+                       WHERE df.forecast_run_id = ia.forecast_run_id
+                         AND df.product_id = ia.product_id
+                         AND df.model_version <> fr.model_version
+                   ) AS has_mismatched_forecast_model
+            FROM inventory_assessment ia
+            LEFT JOIN forecast_run fr
+              ON fr.forecast_run_id = ia.forecast_run_id
+            {where}
+            {order}
+            """,
+            params,
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+
+    if row is None:
+        if assessment_id is None:
+            raise AssessmentLinkageError(
+                f"No persisted Module 3 inventory assessment exists for product '{product_id}'."
+            )
+        raise AssessmentLinkageError(
+            f"Inventory assessment {assessment_id} does not belong to product '{product_id}'."
+        )
+
+    resolved = dict(row)
+    if resolved["forecast_run_id"] is None:
+        raise AssessmentLinkageError(
+            f"Inventory assessment {resolved['assessment_id']} for product "
+            f"'{product_id}' has no associated forecast run."
+        )
+    if resolved.get("linked_forecast_status") != "completed":
+        raise AssessmentLinkageError(
+            f"Forecast run '{resolved['forecast_run_id']}' linked to inventory "
+            f"assessment {resolved['assessment_id']} is missing or not completed."
+        )
+    if resolved.get("model_version") != resolved.get("linked_model_version"):
+        raise AssessmentLinkageError(
+            f"Forecast model version does not match inventory assessment "
+            f"{resolved['assessment_id']} for product '{product_id}'."
+        )
+    if not resolved.get("has_product_forecast"):
+        raise AssessmentLinkageError(
+            f"Forecast run '{resolved['forecast_run_id']}' has no forecast rows "
+            f"for product '{product_id}'."
+        )
+    if resolved.get("has_mismatched_forecast_model"):
+        raise AssessmentLinkageError(
+            f"Forecast rows for product '{product_id}' do not consistently match "
+            f"forecast run '{resolved['forecast_run_id']}'."
+        )
+    return resolved
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # F. Schema and persistence
 # ─────────────────────────────────────────────────────────────────────────────
@@ -678,8 +769,33 @@ def upsert_excess_assessment(conn, row: dict) -> int:
     Each call inserts a new row (history preserved).
     Returns the new assessment_id.
     """
+    product_id = row.get("product_id")
+    inventory_assessment_id = row.get("inventory_assessment_id")
+    forecast_run_id = row.get("forecast_run_id")
+    if not product_id:
+        raise AssessmentLinkageError("Excess-stock assessment has no product_id.")
+    if inventory_assessment_id is None or forecast_run_id is None:
+        raise AssessmentLinkageError(
+            f"Excess-stock assessment for product '{product_id}' requires both "
+            "a persisted inventory_assessment_id and forecast_run_id."
+        )
+
     cur = conn.cursor()
     try:
+        linked_assessment = get_latest_linked_inventory_assessment(
+            conn, product_id, assessment_id=inventory_assessment_id
+        )
+        if str(linked_assessment["forecast_run_id"]) != str(forecast_run_id):
+            raise AssessmentLinkageError(
+                f"Forecast run '{forecast_run_id}' does not belong to inventory "
+                f"assessment {inventory_assessment_id} for product '{product_id}'."
+            )
+        latest_assessment = get_latest_linked_inventory_assessment(conn, product_id)
+        if latest_assessment["assessment_id"] != linked_assessment["assessment_id"]:
+            raise AssessmentLinkageError(
+                f"Inventory assessment {inventory_assessment_id} is no longer the "
+                f"latest assessment for product '{product_id}'."
+            )
         cur.execute(
             """
             INSERT INTO excess_stock_assessment (
@@ -730,7 +846,7 @@ def get_excess_assessment_by_product(conn, product_id: str) -> Optional[dict]:
             """
             SELECT * FROM excess_stock_assessment
             WHERE product_id = %s
-            ORDER BY assessed_at DESC
+            ORDER BY assessed_at DESC, assessment_id DESC
             LIMIT 1
             """,
             (product_id,),
@@ -772,11 +888,12 @@ def get_excess_assessments_paginated(
         count_sql = f"""
             SELECT COUNT(*) AS cnt
             FROM (
-                SELECT DISTINCT ON (esa.product_id) esa.assessment_id
-                FROM excess_stock_assessment esa
-                {where}
-                ORDER BY esa.product_id, esa.assessed_at DESC
-            ) sub
+                SELECT DISTINCT ON (product_id)
+                    product_id, excess_category, abc_class, xyz_class
+                FROM excess_stock_assessment
+                ORDER BY product_id, assessed_at DESC, assessment_id DESC
+            ) esa
+            {where}
         """
         cur.execute(count_sql, params)
         total = int(cur.fetchone()["cnt"])
@@ -786,11 +903,20 @@ def get_excess_assessments_paginated(
             FROM (
                 SELECT DISTINCT ON (product_id) *
                 FROM excess_stock_assessment
-                {where}
-                ORDER BY product_id, assessed_at DESC
+                ORDER BY product_id, assessed_at DESC, assessment_id DESC
             ) esa
             JOIN product p ON esa.product_id = p.product_id
-            ORDER BY esa.excess_category DESC, esa.abc_rank ASC NULLS LAST
+            {where}
+            ORDER BY
+                CASE esa.excess_category
+                    WHEN 'dead_stock' THEN 0
+                    WHEN 'overstock' THEN 1
+                    WHEN 'slow_moving' THEN 2
+                    WHEN 'normal' THEN 3
+                    ELSE 4
+                END,
+                esa.abc_rank ASC NULLS LAST,
+                esa.product_id ASC
             LIMIT %s OFFSET %s
         """
         cur.execute(data_sql, params + [limit, offset])
@@ -810,7 +936,7 @@ def get_excess_assessment_summary(conn) -> dict:
                 SELECT DISTINCT ON (product_id)
                     product_id, excess_category, abc_class, xyz_class, assessed_at
                 FROM excess_stock_assessment
-                ORDER BY product_id, assessed_at DESC
+                ORDER BY product_id, assessed_at DESC, assessment_id DESC
             )
             SELECT
                 COUNT(*)                                                        AS total_assessed,

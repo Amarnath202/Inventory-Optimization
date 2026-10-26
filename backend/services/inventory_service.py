@@ -450,11 +450,11 @@ def get_assessments_paginated(
         count_sql = f"""
             SELECT COUNT(*) AS cnt
             FROM (
-                SELECT DISTINCT ON (ia.product_id) ia.assessment_id
-                FROM inventory_assessment ia
-                {where}
-                ORDER BY ia.product_id, ia.assessed_at DESC
-            ) sub
+                SELECT DISTINCT ON (product_id) product_id, routing_decision
+                FROM inventory_assessment
+                ORDER BY product_id, assessed_at DESC
+            ) ia
+            {where}
         """
         cur.execute(count_sql, params)
         total = int(cur.fetchone()["cnt"])
@@ -465,10 +465,10 @@ def get_assessments_paginated(
             FROM (
                 SELECT DISTINCT ON (product_id) *
                 FROM inventory_assessment
-                {where}
                 ORDER BY product_id, assessed_at DESC
             ) ia
             JOIN product p ON ia.product_id = p.product_id
+            {where}
             ORDER BY ia.routing_decision, ia.product_id
             LIMIT %s OFFSET %s
         """

@@ -50,10 +50,10 @@ module1_data_management/
 │   ├── load_database.py         # Phase 6: idempotent bulk loader
 │   └── build_daily_demand.py    # Phase 7: aggregate daily_demand
 ├── tests/
-│   └── test_module1.py          # Phase 10: 12 automated DB tests
-├── .env.example                 # DB credential template
-└── requirements.txt
+│   └── test_module1.py          # Phase 10: automated DB tests
 ```
+
+Configuration and dependencies are managed at the repository root.
 
 ---
 
@@ -61,11 +61,9 @@ module1_data_management/
 
 ### 1. Environment Setup
 
-```bash
-cp .env.example .env
-# Edit .env with your PostgreSQL credentials
-pip install -r requirements.txt
-```
+Use the canonical root `README.md` for Python environment creation, dependency
+installation, and the shared root `.env.example` / `.env` configuration. Run the
+Module 1 commands below from the repository root using `.venv\Scripts\python.exe`.
 
 ### 2. Run All Phases in Order
 
@@ -73,13 +71,13 @@ pip install -r requirements.txt
 # Always set PYTHONUTF8=1 on Windows to avoid cp1252 encoding issues
 $env:PYTHONUTF8=1
 
-python src/inspect_data.py        # Phase 1 — Profile source CSVs
-python src/validate_data.py       # Phase 2 — Validate all 4 files
-python src/preprocess.py          # Phase 3 — Generate processed CSVs
-python src/build_schema.py        # Phase 5 — Create PostgreSQL schema
-python src/load_database.py       # Phase 6 — Bulk load into DB
-python src/build_daily_demand.py  # Phase 7 — Aggregate daily demand
-python tests/test_module1.py      # Phase 10 — Run 12 automated tests
+.\.venv\Scripts\python.exe module1_data_management\src\inspect_data.py
+.\.venv\Scripts\python.exe module1_data_management\src\validate_data.py
+.\.venv\Scripts\python.exe module1_data_management\src\preprocess.py
+.\.venv\Scripts\python.exe module1_data_management\src\build_schema.py
+.\.venv\Scripts\python.exe module1_data_management\src\load_database.py
+.\.venv\Scripts\python.exe module1_data_management\src\build_daily_demand.py
+.\.venv\Scripts\python.exe -m pytest module1_data_management\tests -q
 ```
 
 > **Note:** All scripts are idempotent. Re-running `load_database.py` uses
@@ -208,4 +206,5 @@ PROC_DIR   = data/processed/
 SQL_DIR    = sql/
 ```
 
-Credentials are loaded from `.env` (see `.env.example`).
+Credentials are loaded from the repository-root `.env`, created from the root
+`.env.example` as described in the root `README.md`.

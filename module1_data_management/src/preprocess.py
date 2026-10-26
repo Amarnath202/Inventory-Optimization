@@ -384,7 +384,7 @@ def process_supplier_metrics(inv_df: pd.DataFrame) -> pd.DataFrame:
       - Fill rate
       - Verified defect rate
       - Actual supplier reliability
-    TOPSIS ranking belongs to a later module.
+    Supplier ranking is handled by Module 4 using recorded lead time only.
     """
     print("[preprocess] G. Supplier Metrics …")
 

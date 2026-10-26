@@ -15,6 +15,8 @@ Follows existing API conventions:
   - Pydantic v2 schemas
   - HTTP 404 for missing products or no assessments
   - HTTP 422 for invalid parameters
+  - HTTP 409 when a persisted Module 3 assessment and matching forecast run
+    cannot be safely linked
   - HTTP 503 if a critical dependency is unavailable
   - No stack traces or credentials in error responses
   - Consistent pagination: limit / offset query params
@@ -35,6 +37,7 @@ from pydantic import BaseModel, Field
 from backend.services.db import get_db
 from backend.services.inventory_service import get_product_with_supplier
 from backend.services.excess_stock_service import (
+    AssessmentLinkageError,
     apply_excess_schema,
     assess_excess_stock_product,
     upsert_excess_assessment,
@@ -129,11 +132,7 @@ def assess_excess_stock(body: AssessExcessRequest, conn=Depends(get_db)):
         )
 
         # Persist
-        assessment_id = None
-        try:
-            assessment_id = upsert_excess_assessment(conn, result_row)
-        except Exception as pe:
-            logger.warning(f"[ExcessStock API] Persistence warning for {pid}: {pe}")
+        assessment_id = upsert_excess_assessment(conn, result_row)
 
         return AssessExcessResponse(
             status="completed",
@@ -154,6 +153,9 @@ def assess_excess_stock(body: AssessExcessRequest, conn=Depends(get_db)):
             reason=body.reason,
         )
 
+    except AssessmentLinkageError as e:
+        logger.warning(f"[ExcessStock API] Assessment linkage failed for {pid}: {e}")
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f"[ExcessStock API] Assessment error for {pid}: {e}", exc_info=True)
         raise HTTPException(

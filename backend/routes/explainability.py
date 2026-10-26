@@ -217,12 +217,13 @@ def explain_forecast(
                 )
             else:
                 cur.execute(
-                    """SELECT MIN(df.forecast_date) AS fd
+                    """SELECT df.forecast_date AS fd
                        FROM demand_forecast df
                        JOIN forecast_run fr ON df.forecast_run_id = fr.forecast_run_id
                        WHERE fr.status = 'completed'
                          AND df.product_id = %s
-                       ORDER BY fr.run_completed_at DESC""",
+                       ORDER BY fr.run_completed_at DESC, df.forecast_date ASC
+                       LIMIT 1""",
                     (pid,),
                 )
             row = cur.fetchone()

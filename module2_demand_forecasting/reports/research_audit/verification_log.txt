@@ -1,0 +1,37 @@
+================================================================================
+MODULE 2 DEMAND FORECASTING: AUTOMATED METRIC AUDIT VERIFICATION LOG
+Generated: 2026-10-12 14:50:59
+================================================================================
+
+[PASS] Check 01: Database Freshness & Latest Ingested Date -> MAX date=2026-08-30
+[PASS] Check 02: Raw Demand Record Count & SKU Coverage -> Rows=1,045,477, SKUs=3,046
+[PASS] Check 03: Daily Demand Primary Key Uniqueness -> No duplicate (product_id, date) pairs
+[PASS] Check 04: Actual Demand Non-Negativity and Finiteness -> All quantities >= 0 and finite
+[PASS] Check 05: Calendar Gap-Fill Continuity -> Total calendar rows=1,838,702 (+793,225 zero days)
+[PASS] Check 06: Chronological Split Row Counts -> Train=1,566,863, Val=137,061, Test=134,778
+[PASS] Check 07: Feature Matrix Dimension & Usable Burn-in Rows -> Usable rows=1,753,414 (-85,288 burn-in dropped)
+[PASS] Check 08: Saved Production Model Provenance -> Model artifact: lgbm_20260830.joblib
+[PASS] Check 09_val: Validation Evaluation Row and Product Counts -> Rows=137,061, Products=3,046
+[PASS] Check 10_val_lgbm: Validation LightGBM RMSE Consistency -> RMSE=2.113365, sqrt(MSE)=2.113365
+[PASS] Check 10_val_ma7: Validation MA7 RMSE Consistency -> RMSE=2.146095, sqrt(MSE)=2.146095
+[PASS] Check 09_test: Final Test Evaluation Row and Product Counts -> Rows=134,778, Products=3,044
+[PASS] Check 10_test_lgbm: Final Test LightGBM RMSE Consistency -> RMSE=2.152348, sqrt(MSE)=2.152348
+[PASS] Check 10_test_ma7: Final Test MA7 RMSE Consistency -> RMSE=2.204552, sqrt(MSE)=2.204552
+[PASS] Check 11_proto_a_f1: Protocol A (Leakage-Safe, Zero Test Overlap) Fold 1 Alignment -> Rows=21,322, SKUs=3,046
+[PASS] Check 11_proto_a_f2: Protocol A (Leakage-Safe, Zero Test Overlap) Fold 2 Alignment -> Rows=21,322, SKUs=3,046
+[PASS] Check 11_proto_a_f3: Protocol A (Leakage-Safe, Zero Test Overlap) Fold 3 Alignment -> Rows=21,313, SKUs=3,046
+[PASS] Check 11_proto_b_f1: Protocol B (Historical, Contains Test Overlap) Fold 1 Alignment -> Rows=21,322, SKUs=3,046
+[PASS] Check 11_proto_b_f2: Protocol B (Historical, Contains Test Overlap) Fold 2 Alignment -> Rows=21,315, SKUs=3,046
+[PASS] Check 11_proto_b_f3: Protocol B (Historical, Contains Test Overlap) Fold 3 Alignment -> Rows=21,308, SKUs=3,044
+[PASS] Check 10: Stored Prediction Disk Artifact Metric Recomputation -> Recomputed Val LGBM MAE=1.1658, Val MA7 MAE=1.2840
+[PASS] Check 12: Cross-Validation Training Cutoff Temporal Isolation -> All training cutoffs t <= origin - 1 day (zero lookahead leakage)
+[PASS] Check 13: Feature Alignment Parity (feature_engineering vs forecast.py) -> Day 1 roll_mean_7=1.2857 matches feat_df=1.2857
+[PASS] Check 14: Protocol B Fold 3 Test Overlap Identified and Handled -> Fold 3 labeled test_overlap=True (6 overlapping days)
+[PASS] Check 15: Cross-Validation Fold-to-Summary Aggregation Consistency -> Summary means match unrounded arithmetic mean of fold metrics
+[PASS] Check 16: Mathematical Consistency of Display Rounding -> All displayed RMSE exactly equals sqrt(unrounded MSE)
+[PASS] Check 17: Model Artifact & Provenance Persistence -> 6 fold models saved in cv_models
+[PASS] Check 18: Report-to-CSV Dynamic Table Consistency -> All markdown tables generated dynamically from CSV dataframes
+
+================================================================================
+AUDIT STATUS: ALL 18 AUTOMATED CHECKS PASSED (100% COMPLIANT)
+================================================================================
