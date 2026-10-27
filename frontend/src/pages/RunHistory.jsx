@@ -1,97 +1,124 @@
-// src/pages/RunHistory.jsx
-import { useEffect, useState } from 'react';
-import { getRuns, triggerForecast } from '../api';
+import { useCallback, useMemo, useState } from 'react';
+import { errorMessage, getRuns, triggerForecast } from '../api';
+import { EmptyState, ErrorState, LoadingState } from '../components/RequestState';
+import { useApiResource } from '../hooks/useApiResource';
+import { formatDate, formatDateTime, formatNumber } from '../utils/format';
+
+const EMPTY_RUNS = [];
 
 function StatusPill({ status }) {
-  return <span className={`status-pill status-${status}`}>{status}</span>;
+  const normalized = String(status || 'unknown').toLowerCase().replaceAll('_', '-');
+  return <span className={`status-pill status-${normalized}`}>{status || 'Unknown'}</span>;
 }
 
 export default function RunHistory() {
-  const [runs,       setRuns]       = useState([]);
-  const [loading,    setLoading]    = useState(true);
+  const [search, setSearch] = useState('');
   const [triggering, setTriggering] = useState(false);
-  const [msg,        setMsg]        = useState('');
+  const [message, setMessage] = useState('');
 
-  const fetchRuns = () => {
-    getRuns(50).then(setRuns).catch(console.error).finally(() => setLoading(false));
-  };
+  const requestRuns = useCallback(async (signal) => {
+    const response = await getRuns(100, { signal });
+    if (!Array.isArray(response)) throw new Error('The API returned an unexpected forecast run list.');
+    return response;
+  }, []);
+  const { data: runsData, loading, error, reload: refreshRuns } = useApiResource(requestRuns);
+  const runs = runsData ?? EMPTY_RUNS;
 
-  useEffect(() => { fetchRuns(); }, []);
+  const filteredRuns = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return runs;
+    return runs.filter((run) => [
+      run.forecast_run_id,
+      run.model_version,
+      run.status,
+      run.triggered_by,
+      run.forecast_origin,
+    ].some((value) => String(value ?? '').toLowerCase().includes(query)));
+  }, [runs, search]);
 
   const handleTrigger = async () => {
     setTriggering(true);
+    setMessage('');
     try {
-      await triggerForecast('Manual catch-up trigger');
-      setMsg('✅ Forecast queued. Refreshing…');
-      setTimeout(() => { fetchRuns(); setMsg(''); }, 3000);
-    } catch {
-      setMsg('❌ Trigger failed.');
+      await triggerForecast('Manual request from forecast run history');
+      setMessage('Forecast request accepted. Refresh the list to check run progress.');
+    } catch (requestError) {
+      setMessage(errorMessage(requestError));
     } finally {
       setTriggering(false);
     }
   };
 
-  const fmt = (ts) => ts ? ts.slice(0, 19).replace('T', ' ') : '—';
-
   return (
-    <div>
+    <>
       <div className="page-header">
+        <div>
+          <h1>Forecast run history</h1>
+          <p>Execution records reported by the forecasting service. A queued request may take time to complete.</p>
+        </div>
         <div className="flex items-center gap-12">
-          <div>
-            <h1>Forecast Run History</h1>
-            <p>All forecast executions. Each run has a unique UUID (forecast_run_id) separate from model_version.</p>
-          </div>
-          <div className="ml-auto flex gap-12 items-center">
-            {msg && <span style={{ fontSize: 12, color: 'var(--accent-green)' }}>{msg}</span>}
-            <button className="btn btn-secondary" onClick={fetchRuns}>↻ Refresh</button>
-            <button className="btn btn-primary" onClick={handleTrigger} disabled={triggering}>
-              {triggering ? '⏳ Queuing…' : '▶ Trigger Forecast'}
-            </button>
-          </div>
+          <button className="btn btn-secondary" type="button" onClick={refreshRuns} disabled={loading}>
+            Refresh
+          </button>
+          <button className="btn btn-primary" type="button" onClick={handleTrigger} disabled={triggering}>
+            {triggering ? 'Submitting…' : 'Request forecast'}
+          </button>
         </div>
       </div>
 
       <div className="page-body">
-        <div style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12.5, color: 'var(--accent-orange)' }}>
-          <strong>Manual recovery note:</strong> Automatic catch-up after missed runs is not enabled.
-          Use "Trigger Forecast" to manually generate forecasts. Retrain first (<code>python src/train.py</code>) if the model may be stale.
+        {message && <div className={`notice ${message.startsWith('Forecast request') ? 'success' : 'error'} mb-20`} role="status">{message}</div>}
+        <div className="notice warning mb-20">
+          A manual forecast request runs the backend pipeline and writes forecast records. It does not retrain the model.
         </div>
+        <label className="search-box" htmlFor="run-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            id="run-search"
+            type="search"
+            placeholder="Search run ID, model version, status, or trigger…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <span className="inline-message">{filteredRuns.length} runs</span>
+        </label>
 
         {loading ? (
-          <div className="loading-center"><div className="spinner" /></div>
-        ) : runs.length === 0 ? (
-          <div className="empty-state">
-            <h3>No forecast runs yet</h3>
-            <p>Trigger a forecast run or wait for the weekly scheduler.</p>
-          </div>
+          <LoadingState label="Loading forecast runs…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={refreshRuns} />
+        ) : filteredRuns.length === 0 ? (
+          <EmptyState title={runs.length ? 'No matching runs' : 'No forecast runs'}>
+            {runs.length ? 'Try a different search term.' : 'The API did not return any forecast runs.'}
+          </EmptyState>
         ) : (
           <div className="table-wrapper">
             <table>
               <thead>
                 <tr>
                   <th>Run ID</th>
-                  <th>Model Version</th>
+                  <th>Model version</th>
                   <th>Status</th>
-                  <th>Triggered By</th>
-                  <th>Forecast Origin</th>
-                  <th>Target Range</th>
+                  <th>Triggered by</th>
+                  <th>Forecast origin</th>
+                  <th>Target range</th>
                   <th>Rows</th>
-                  <th>Started At</th>
-                  <th>Completed At</th>
+                  <th>Started</th>
+                  <th>Completed</th>
                 </tr>
               </thead>
               <tbody>
-                {runs.map(r => (
-                  <tr key={r.forecast_run_id}>
-                    <td><span className="mono" title={r.forecast_run_id}>{String(r.forecast_run_id).slice(0, 14)}…</span></td>
-                    <td><span className="mono">{r.model_version}</span></td>
-                    <td><StatusPill status={r.status} /></td>
-                    <td><span className="badge badge-blue">{r.triggered_by}</span></td>
-                    <td className="mono">{r.forecast_origin}</td>
-                    <td className="mono">{r.target_date_from} → {r.target_date_to}</td>
-                    <td>{r.rows_written?.toLocaleString() ?? '—'}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{fmt(r.run_started_at)}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{fmt(r.run_completed_at)}</td>
+                {filteredRuns.map((run) => (
+                  <tr key={run.forecast_run_id}>
+                    <td><span className="mono" title={run.forecast_run_id}>{String(run.forecast_run_id || '—').slice(0, 14)}{run.forecast_run_id ? '…' : ''}</span></td>
+                    <td><span className="mono">{run.model_version || '—'}</span></td>
+                    <td><StatusPill status={run.status} /></td>
+                    <td>{run.triggered_by || '—'}</td>
+                    <td>{formatDate(run.forecast_origin)}</td>
+                    <td>{run.target_date_from || '—'}{run.target_date_to ? ` – ${run.target_date_to}` : ''}</td>
+                    <td>{formatNumber(run.rows_written)}</td>
+                    <td>{formatDateTime(run.run_started_at)}</td>
+                    <td>{formatDateTime(run.run_completed_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -99,6 +126,6 @@ export default function RunHistory() {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }

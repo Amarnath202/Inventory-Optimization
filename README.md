@@ -25,12 +25,12 @@ The outputs are advisory decision support. Managers remain responsible for purch
 - **Excess-stock assessment — implemented as deterministic/statistical rules:** population revenue ranking (ABC), demand variability classification (XYZ), and overstock/slow-moving/dead-stock flags produce an advisory action. The current static data may not exercise every route.
 - **Explainability — implemented:** TreeSHAP is used for supported LightGBM forecast predictions; inventory, procurement, and excess-stock decisions use their calculation rules rather than SHAP.
 - **API — implemented:** FastAPI routers cover the forecast and inventory decision workflows. Some write paths have not been verified against a disposable live database.
-- **Web dashboard — implemented for Module 2:** the React interface shows forecast summaries, product forecasts, run history, and evaluation metrics. It is not a complete UI for Modules 3–6.
+- **Web dashboard — unified frontend:** the React interface covers forecast analytics and exposes the available inventory, procurement, excess-stock, orchestration, and explainability workflows. It does not expose unsupported product/sales CRUD or supplier-performance/TOPSIS features.
 - **Scheduled forecasting — implemented as an optional separate process:** APScheduler can run forecasts weekly. Training is manual; scheduling is not started by the API.
 
 ## System architecture
 
-The shared FastAPI application imports the forecasting and inventory-related routers. Module 2's pipeline trains a model or generates and stores forecasts. Module 3 consumes the latest completed forecast plus product, sales, supplier, and latest-batch stock data. Native Python orchestration uses Module 3's decision to invoke **at most one** downstream agent: procurement or excess stock. Normal and insufficient-data decisions do not invoke either agent. Module 6 can explain supported forecast and persisted decision records. The React application currently calls forecast endpoints only.
+The shared FastAPI application imports the forecasting and inventory-related routers. Module 2's pipeline trains a model or generates and stores forecasts. Module 3 consumes the latest completed forecast plus product, sales, supplier, and latest-batch stock data. Native Python orchestration uses Module 3's decision to invoke **at most one** downstream agent: procurement or excess stock. Normal and insufficient-data decisions do not invoke either agent. Module 6 can explain supported forecast and persisted decision records. The React application calls the supported forecast and decision endpoints; database-backed writes still require an appropriately configured database and relevant schemas.
 
 ```mermaid
 flowchart LR
@@ -248,7 +248,7 @@ Set-Location frontend
 npm run dev
 ```
 
-Vite normally serves the UI at `http://localhost:5173`. The frontend API client has `http://localhost:8000` hard-coded as its backend base URL. The backend's CORS configuration is development-oriented.
+Vite normally serves the UI at `http://localhost:5173`. Set `VITE_API_BASE_URL` when the backend is not at `http://localhost:8000`; the backend's CORS configuration is development-oriented.
 
 ### Optional weekly scheduler
 
@@ -380,7 +380,8 @@ Verified against the current source and the dated audit report:
 - **Stockout prediction:** the planned XGBoost stockout predictor is deferred because the data lacks reliable stockout labels. Zero sales alone cannot distinguish a stockout from no demand.
 - **Excess-stock routing:** the Module 5 assessment rules exist, but the agent is conditional on Module 3 routing. The Module 5 source describes that the current static inventory snapshot did not route products to the excess-stock branch.
 - **Orchestration history:** run results are cached in process memory and disappear when the API restarts.
-- **Frontend scope:** the React dashboard is forecast-focused and does not expose the full Module 3–6 decision workflow as a user interface.
+- **Frontend and data-management scope:** the UI provides read-only product/forecast data, forecast history, and the available Modules 3–6 advisory workflows. There are no dedicated Module 1 product, sales, inventory, or supplier CRUD endpoints. Historical sales are visible only where forecast detail returns them; supplier views are product alternatives, not a supplier-performance dashboard.
+- **Unavailable algorithms:** XGBoost stockout prediction is deferred because valid stockout labels are unavailable. Module 4 currently ranks suppliers by lead time with supplier ID as a deterministic tie-breaker; TOPSIS and price/quality/reliability scoring are not implemented. Do not infer these capabilities from the project proposal.
 - **Integration validation:** the dated regression suites pass, but relevant downstream API tests primarily mock database calls; the live database-backed orchestration POST remains unverified. The audit marked the backend not ready to freeze or integrate against its shared database.
 
 ## Future improvements

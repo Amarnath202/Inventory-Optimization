@@ -201,6 +201,11 @@ def list_excess_assessments(
         )
 
     try:
+        apply_excess_schema(conn)
+    except Exception as e:
+        logger.warning(f"[ExcessStock API] Schema warning: {e}")
+
+    try:
         result = get_excess_assessments_paginated(
             conn,
             excess_category=excess_category,
@@ -277,6 +282,11 @@ def get_excess_summary(conn=Depends(get_db)):
     Summary counts of the latest excess-stock assessment per product,
     broken down by excess_category, ABC class, and XYZ class.
     """
+    try:
+        apply_excess_schema(conn)
+    except Exception as e:
+        logger.warning(f"[ExcessStock API] Schema warning: {e}")
+
     try:
         summary = get_excess_assessment_summary(conn)
     except Exception as e:
